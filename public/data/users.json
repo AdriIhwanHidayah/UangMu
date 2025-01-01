@@ -1,0 +1,11 @@
+[
+    {
+      "id": 1,
+      "type": "transfer",
+      "amount": 500,
+      "category": "finance",
+      "description": "Initial transfer",
+      "date": "2024-12-30T00:00:00Z"
+    }
+  ]
+  

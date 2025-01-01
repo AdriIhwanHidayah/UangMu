@@ -9,7 +9,7 @@ import Sidebar from "./components/Sidebar";
 function App() {
   return (
     <Router>
-      <TransactionProvider>
+      <TransactionProvider> {/* Membungkus aplikasi dengan TransactionProvider */}
         <div className="flex">
           <Sidebar />
           <div className="flex-1 p-4">
