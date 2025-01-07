@@ -7,7 +7,7 @@ function Reports() {
   const [transactions, setTransactions] = useState([]);
   const [hideSaldo, setHideSaldo] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
-  const [editedData, setEditedData] = useState({});
+  const [editedAmount, setEditedAmount] = useState("");
 
   // Fetch transactions from Firestore
   useEffect(() => {
@@ -35,32 +35,33 @@ function Reports() {
 
   const saldo = totalMasuk - totalKeluar;
 
-  const handleEditStart = (index, transaction) => {
+  const handleEditStart = (index, currentAmount) => {
     setEditingIndex(index);
-    setEditedData({ ...transaction });
-  };
-
-  const handleEditChange = (field, value) => {
-    setEditedData((prev) => ({ ...prev, [field]: value }));
+    setEditedAmount(currentAmount.toString());
   };
 
   const handleEditSubmit = async (index) => {
-    if (!editedData) return;
+    if (editedAmount === "") return;
 
     try {
+      // Ambil ID transaksi untuk diperbarui
       const transactionId = transactions[index].id;
+
+      // Referensi ke dokumen transaksi di Firestore
       const transactionRef = doc(db, "transactions", transactionId);
 
-      // Update transaksi di Firestore
-      await updateDoc(transactionRef, editedData);
+      // Update transaksi dengan nominal baru
+      await updateDoc(transactionRef, {
+        amount: parseFloat(editedAmount), // Perbarui nominal
+      });
 
       // Update transaksi di state setelah berhasil
       const updatedTransactions = [...transactions];
-      updatedTransactions[index] = { ...editedData, id: transactionId };
+      updatedTransactions[index].amount = parseFloat(editedAmount);
       setTransactions(updatedTransactions);
 
       setEditingIndex(null);
-      setEditedData({});
+      setEditedAmount("");
     } catch (error) {
       console.error("Error updating transaction: ", error);
     }
@@ -68,17 +69,22 @@ function Reports() {
 
   const handleEditCancel = () => {
     setEditingIndex(null);
-    setEditedData({});
+    setEditedAmount("");
   };
 
   const handleDelete = async (index) => {
     if (window.confirm("Apakah Anda yakin ingin menghapus transaksi ini?")) {
       try {
+        // Ambil ID transaksi untuk dihapus
         const transactionId = transactions[index].id;
+
+        // Referensi ke dokumen transaksi di Firestore
         const transactionRef = doc(db, "transactions", transactionId);
 
+        // Menghapus dokumen
         await deleteDoc(transactionRef);
 
+        // Berhasil menghapus, update transaksi di state
         setTransactions(transactions.filter((_, i) => i !== index));
       } catch (error) {
         console.error("Error deleting transaction: ", error);
@@ -92,7 +98,7 @@ function Reports() {
       <div className="mb-4 p-4 border border-gray-300 rounded-md shadow-sm bg-white">
         <div className="flex items-center space-x-2">
           <p className="text-lg">
-            Saldo Anda: {" "}
+            Saldo Anda:{" "}
             <span className="font-bold">
               {hideSaldo ? "**********" : `Rp ${saldo.toLocaleString()}`}
             </span>
@@ -114,99 +120,41 @@ function Reports() {
         <thead>
           <tr className="bg-gray-200">
             <th className="border border-gray-300 px-4 py-2 text-left">Tanggal</th>
-            <th className="border border-gray-300 px-4 py-2 text-left">Jam</th>
+            <th className="border border-gray-300 px-4 py-2 text-left">Jam</th> {/* Menambahkan kolom Jam */}
             <th className="border border-gray-300 px-4 py-2 text-left">Tipe</th>
             <th className="border border-gray-300 px-4 py-2 text-right">Nominal</th>
             <th className="border border-gray-300 px-4 py-2 text-left">Kategori</th>
             <th className="border border-gray-300 px-4 py-2 text-left">Deskripsi</th>
-            <th className="border border-gray-300 px-4 py-2 text-left">Aksi</th>
+            <th className="border border-gray-300 px-4 py-2 text-left">Hapus</th>
           </tr>
         </thead>
         <tbody>
           {transactions.map((t, index) => {
+            // Mengambil waktu dari transaksi
             const transactionDate = new Date(t.date.seconds * 1000);
             const hours = transactionDate.getHours();
             const minutes = transactionDate.getMinutes();
             const ampm = hours >= 12 ? "PM" : "AM";
-            const formattedTime = `${hours % 12}:${minutes < 10 ? "0" + minutes : minutes} ${ampm}`;
+            const formattedTime = `${hours % 12}:${minutes < 10 ? "0" + minutes : minutes} ${ampm}`; // Format jam dalam 12 jam
 
             return (
               <tr key={index} className={`${index % 2 === 0 ? "bg-gray-50" : ""}`}>
                 <td className="border border-gray-300 px-4 py-2">
-                  {editingIndex === index ? (
-                    <input
-                      type="date"
-                      value={editedData.date || transactionDate.toISOString().split("T")[0]}
-                      onChange={(e) => handleEditChange("date", e.target.value)}
-                      className="p-1 border border-gray-300 rounded w-full"
-                    />
-                  ) : (
-                    transactionDate.toLocaleDateString()
-                  )}
+                  {transactionDate.toLocaleDateString()} {/* Menampilkan tanggal */}
                 </td>
                 <td className="border border-gray-300 px-4 py-2">
-                  {editingIndex === index ? (
-                    <input
-                      type="time"
-                      value={editedData.time || `${hours}:${minutes}`}
-                      onChange={(e) => handleEditChange("time", e.target.value)}
-                      className="p-1 border border-gray-300 rounded w-full"
-                    />
-                  ) : (
-                    formattedTime
-                  )}
+                  {formattedTime} {/* Menampilkan jam dalam format 12 jam */}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {editingIndex === index ? (
-                    <input
-                      type="text"
-                      value={editedData.type || t.type}
-                      onChange={(e) => handleEditChange("type", e.target.value)}
-                      className="p-1 border border-gray-300 rounded w-full"
-                    />
-                  ) : (
-                    t.type
-                  )}
-                </td>
+                <td className="border border-gray-300 px-4 py-2 capitalize">{t.type}</td>
                 <td className="border border-gray-300 px-4 py-2 text-right">
                   {editingIndex === index ? (
-                    <input
-                      type="number"
-                      value={editedData.amount || t.amount}
-                      onChange={(e) => handleEditChange("amount", parseFloat(e.target.value))}
-                      className="p-1 border border-gray-300 rounded w-full"
-                    />
-                  ) : (
-                    t.amount.toLocaleString()
-                  )}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {editingIndex === index ? (
-                    <input
-                      type="text"
-                      value={editedData.category || t.category}
-                      onChange={(e) => handleEditChange("category", e.target.value)}
-                      className="p-1 border border-gray-300 rounded w-full"
-                    />
-                  ) : (
-                    t.category
-                  )}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {editingIndex === index ? (
-                    <input
-                      type="text"
-                      value={editedData.description || t.description}
-                      onChange={(e) => handleEditChange("description", e.target.value)}
-                      className="p-1 border border-gray-300 rounded w-full"
-                    />
-                  ) : (
-                    t.description
-                  )}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {editingIndex === index ? (
                     <div className="flex items-center">
+                      <input
+                        type="number"
+                        value={editedAmount}
+                        onChange={(e) => setEditedAmount(e.target.value)}
+                        className="p-1 border border-gray-300 rounded w-20"
+                      />
                       <button
                         onClick={() => handleEditSubmit(index)}
                         className="ml-2 text-green-500 hover:text-green-700"
@@ -221,16 +169,20 @@ function Reports() {
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => handleEditStart(index, t)}
-                      className="text-blue-500 hover:text-blue-700"
+                    <span
+                      className="cursor-pointer hover:underline"
+                      onClick={() => handleEditStart(index, t.amount)}
                     >
-                      Edit
-                    </button>
+                      {t.amount.toLocaleString()}
+                    </span>
                   )}
+                </td>
+                <td className="border border-gray-300 px-4 py-2">{t.category}</td>
+                <td className="border border-gray-300 px-4 py-2">{t.description}</td>
+                <td className="border border-gray-300 px-4 py-2">
                   <button
                     onClick={() => handleDelete(index)}
-                    className="ml-2 text-red-500 hover:text-red-700"
+                    className="text-red-500 hover:text-red-700"
                   >
                     <FaTrashAlt className="h-5 w-5" />
                   </button>
