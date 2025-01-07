@@ -11,8 +11,10 @@ function App() {
     <Router>
       <TransactionProvider> {/* Membungkus aplikasi dengan TransactionProvider */}
         <div className="flex">
+          {/* Sidebar dengan posisi tetap */}
           <Sidebar />
-          <div className="flex-1 p-4">
+          {/* Konten utama dengan margin kiri untuk menyesuaikan lebar sidebar */}
+          <div className="flex-1 ml-64 p-4">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/transactions" element={<Transactions />} />
