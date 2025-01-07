@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from "react";
-import { db } from "../firebase"; // Pastikan path import db sesuai
-import { collection, onSnapshot, deleteDoc, doc, updateDoc } from "firebase/firestore"; // Impor Firestore methods
+import { db } from "../firebase";
+import { collection, onSnapshot, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { FaRegEyeSlash, FaRegEye, FaTrashAlt } from "react-icons/fa";
 
 function Reports() {
   const [transactions, setTransactions] = useState([]);
   const [hideSaldo, setHideSaldo] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
-  const [editedAmount, setEditedAmount] = useState("");
+  const [editedData, setEditedData] = useState({});
 
   // Fetch transactions from Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "transactions"), (snapshot) => {
-      const fetchedTransactions = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
+      const fetchedTransactions = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const date = data.date && data.date.seconds
+          ? new Date(data.date.seconds * 1000)
+          : null; // Validasi date
+        return { id: doc.id, ...data, date }; // Simpan sebagai objek Date
+      });
       setTransactions(fetchedTransactions);
     });
 
@@ -35,33 +37,44 @@ function Reports() {
 
   const saldo = totalMasuk - totalKeluar;
 
-  const handleEditStart = (index, currentAmount) => {
+  const handleEditStart = (index, currentData) => {
     setEditingIndex(index);
-    setEditedAmount(currentAmount.toString());
+    setEditedData({
+      ...currentData,
+      date: currentData.date ? currentData.date.toISOString().split("T")[0] : "", // Format untuk input
+      time: currentData.date ? currentData.date.toTimeString().slice(0, 5) : "",
+    });
+  };
+
+  const handleEditChange = (field, value) => {
+    setEditedData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleEditSubmit = async (index) => {
-    if (editedAmount === "") return;
+    if (!editedData) return;
 
     try {
-      // Ambil ID transaksi untuk diperbarui
       const transactionId = transactions[index].id;
-
-      // Referensi ke dokumen transaksi di Firestore
       const transactionRef = doc(db, "transactions", transactionId);
 
-      // Update transaksi dengan nominal baru
+      const updatedDate = new Date(`${editedData.date}T${editedData.time}`);
       await updateDoc(transactionRef, {
-        amount: parseFloat(editedAmount), // Perbarui nominal
+        ...editedData,
+        date: updatedDate, // Simpan sebagai Date
+        amount: parseFloat(editedData.amount),
       });
 
-      // Update transaksi di state setelah berhasil
       const updatedTransactions = [...transactions];
-      updatedTransactions[index].amount = parseFloat(editedAmount);
+      updatedTransactions[index] = {
+        ...editedData,
+        date: updatedDate,
+        amount: parseFloat(editedData.amount),
+        id: transactionId,
+      };
       setTransactions(updatedTransactions);
 
       setEditingIndex(null);
-      setEditedAmount("");
+      setEditedData({});
     } catch (error) {
       console.error("Error updating transaction: ", error);
     }
@@ -69,22 +82,16 @@ function Reports() {
 
   const handleEditCancel = () => {
     setEditingIndex(null);
-    setEditedAmount("");
+    setEditedData({});
   };
 
   const handleDelete = async (index) => {
     if (window.confirm("Apakah Anda yakin ingin menghapus transaksi ini?")) {
       try {
-        // Ambil ID transaksi untuk dihapus
         const transactionId = transactions[index].id;
-
-        // Referensi ke dokumen transaksi di Firestore
         const transactionRef = doc(db, "transactions", transactionId);
-
-        // Menghapus dokumen
         await deleteDoc(transactionRef);
 
-        // Berhasil menghapus, update transaksi di state
         setTransactions(transactions.filter((_, i) => i !== index));
       } catch (error) {
         console.error("Error deleting transaction: ", error);
@@ -107,11 +114,7 @@ function Reports() {
             onClick={() => setHideSaldo(!hideSaldo)}
             className="text-gray-500 hover:text-gray-700 transition"
           >
-            {hideSaldo ? (
-              <FaRegEyeSlash className="h-6 w-6" />
-            ) : (
-              <FaRegEye className="h-6 w-6" />
-            )}
+            {hideSaldo ? <FaRegEyeSlash className="h-6 w-6" /> : <FaRegEye className="h-6 w-6" />}
           </button>
         </div>
       </div>
@@ -120,72 +123,132 @@ function Reports() {
         <thead>
           <tr className="bg-gray-200">
             <th className="border border-gray-300 px-4 py-2 text-left">Tanggal</th>
-            <th className="border border-gray-300 px-4 py-2 text-left">Jam</th> {/* Menambahkan kolom Jam */}
+            <th className="border border-gray-300 px-4 py-2 text-left">Jam</th>
             <th className="border border-gray-300 px-4 py-2 text-left">Tipe</th>
             <th className="border border-gray-300 px-4 py-2 text-right">Nominal</th>
             <th className="border border-gray-300 px-4 py-2 text-left">Kategori</th>
             <th className="border border-gray-300 px-4 py-2 text-left">Deskripsi</th>
-            <th className="border border-gray-300 px-4 py-2 text-left">Hapus</th>
+
           </tr>
         </thead>
         <tbody>
           {transactions.map((t, index) => {
-            // Mengambil waktu dari transaksi
-            const transactionDate = new Date(t.date.seconds * 1000);
-            const hours = transactionDate.getHours();
-            const minutes = transactionDate.getMinutes();
-            const ampm = hours >= 12 ? "PM" : "AM";
-            const formattedTime = `${hours % 12}:${minutes < 10 ? "0" + minutes : minutes} ${ampm}`; // Format jam dalam 12 jam
+            let formattedDate = "Invalid Date";
+            let formattedTime = "Invalid Time";
+
+            if (t.date instanceof Date && !isNaN(t.date)) {
+              formattedDate = t.date.toISOString().split("T")[0];
+              formattedTime = t.date.toTimeString().slice(0, 5);
+            }
 
             return (
               <tr key={index} className={`${index % 2 === 0 ? "bg-gray-50" : ""}`}>
                 <td className="border border-gray-300 px-4 py-2">
-                  {transactionDate.toLocaleDateString()} {/* Menampilkan tanggal */}
+                  {editingIndex === index ? (
+                    <input
+                      type="date"
+                      value={editedData.date || ""}
+                      onChange={(e) => handleEditChange("date", e.target.value)}
+                      className="p-1 border border-gray-300 rounded w-full"
+                    />
+                  ) : (
+                    formattedDate
+                  )}
                 </td>
                 <td className="border border-gray-300 px-4 py-2">
-                  {formattedTime} {/* Menampilkan jam dalam format 12 jam */}
+                  {editingIndex === index ? (
+                    <input
+                      type="time"
+                      value={editedData.time || ""}
+                      onChange={(e) => handleEditChange("time", e.target.value)}
+                      className="p-1 border border-gray-300 rounded w-full"
+                    />
+                  ) : (
+                    formattedTime
+                  )}
                 </td>
-                <td className="border border-gray-300 px-4 py-2 capitalize">{t.type}</td>
+                <td className="border border-gray-300 px-4 py-2">
+                  {editingIndex === index ? (
+                    <select
+                      value={editedData.type || ""}
+                      onChange={(e) => handleEditChange("type", e.target.value)}
+                      className="p-1 border border-gray-300 rounded w-full"
+                    >
+                      <option value="masuk">Masuk</option>
+                      <option value="keluar">Keluar</option>
+                    </select>
+                  ) : (
+                    t.type
+                  )}
+                </td>
                 <td className="border border-gray-300 px-4 py-2 text-right">
                   {editingIndex === index ? (
+                    <input
+                      type="number"
+                      value={editedData.amount || ""}
+                      onChange={(e) => handleEditChange("amount", e.target.value)}
+                      className="p-1 border border-gray-300 rounded w-20"
+                    />
+                  ) : (
+                    t.amount.toLocaleString()
+                  )}
+                </td>
+                <td className="border border-gray-300 px-4 py-2">
+                  {editingIndex === index ? (
+                    <input
+                      type="text"
+                      value={editedData.category || ""}
+                      onChange={(e) => handleEditChange("category", e.target.value)}
+                      className="p-1 border border-gray-300 rounded w-full"
+                    />
+                  ) : (
+                    t.category
+                  )}
+                </td>
+                <td className="border border-gray-300 px-4 py-2">
+                  {editingIndex === index ? (
+                    <input
+                      type="text"
+                      value={editedData.description || ""}
+                      onChange={(e) => handleEditChange("description", e.target.value)}
+                      className="p-1 border border-gray-300 rounded w-full"
+                    />
+                  ) : (
+                    t.description
+                  )}
+                </td>
+                <td className="border border-gray-300 px-4 py-2">
+                  {editingIndex === index ? (
                     <div className="flex items-center">
-                      <input
-                        type="number"
-                        value={editedAmount}
-                        onChange={(e) => setEditedAmount(e.target.value)}
-                        className="p-1 border border-gray-300 rounded w-20"
-                      />
                       <button
                         onClick={() => handleEditSubmit(index)}
-                        className="ml-2 text-green-500 hover:text-green-700"
+                        className="text-green-500 hover:text-green-700 ml-2"
                       >
                         ✓
                       </button>
                       <button
                         onClick={handleEditCancel}
-                        className="ml-2 text-red-500 hover:text-red-700"
+                        className="text-red-500 hover:text-red-700 ml-2"
                       >
                         ✗
                       </button>
                     </div>
                   ) : (
-                    <span
-                      className="cursor-pointer hover:underline"
-                      onClick={() => handleEditStart(index, t.amount)}
-                    >
-                      {t.amount.toLocaleString()}
-                    </span>
+                    <div className="flex items-center">
+                      <button
+                        onClick={() => handleEditStart(index, t)}
+                        className="text-blue-500 hover:text-blue-700"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(index)}
+                        className="text-red-500 hover:text-red-700 ml-2"
+                      >
+                        <FaTrashAlt />
+                      </button>
+                    </div>
                   )}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">{t.category}</td>
-                <td className="border border-gray-300 px-4 py-2">{t.description}</td>
-                <td className="border border-gray-300 px-4 py-2">
-                  <button
-                    onClick={() => handleDelete(index)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <FaTrashAlt className="h-5 w-5" />
-                  </button>
                 </td>
               </tr>
             );
