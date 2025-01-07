@@ -1,41 +1,63 @@
-import React, { useState } from "react";
-import { useTransactions } from "../TransactionContext";
+import React, { useState, useEffect } from "react";
+import { db } from "../firebase"; // Import konfigurasi Firebase
+import { collection, addDoc, onSnapshot } from "firebase/firestore";
 
 function Transactions() {
-  const { transactions, addTransaction } = useTransactions();
-
-  // State untuk form input
+  const [transactions, setTransactions] = useState([]);
   const [form, setForm] = useState({
-    type: "masuk", // Default jenis transaksi
+    type: "masuk",
     amount: "",
     description: "",
-    category: "makanan", // Default kategori, hanya untuk transaksi keluar
+    category: "makanan",
+    date: "",  // Menambahkan state untuk tanggal
+    time: "",  // Menambahkan state untuk waktu
   });
-
-  // State untuk error
   const [error, setError] = useState("");
+
+  // Fetch transactions dari Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "transactions"), (snapshot) => {
+      const fetchedTransactions = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Log fetched transactions untuk debugging
+      console.log("Fetched transactions:", fetchedTransactions);
+      
+      setTransactions(fetchedTransactions);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Tambahkan transaksi ke Firestore
+  const addTransaction = async (transaction) => {
+    try {
+      console.log("Adding transaction:", transaction); // Log untuk debugging
+      await addDoc(collection(db, "transactions"), transaction);
+    } catch (error) {
+      console.error("Error adding transaction: ", error);
+    }
+  };
 
   // Fungsi submit form
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Validasi input
-    if (!form.amount || !form.description) {
-      setError("Keterangan transaksi atau nominal tidak boleh kosong!");
+    if (!form.amount || !form.description || !form.date || !form.time) {
+      setError("Keterangan transaksi, nominal, tanggal, atau waktu tidak boleh kosong!");
       return;
     }
 
-    // Tambahkan transaksi jika valid
     addTransaction({
       type: form.type,
       amount: parseFloat(form.amount),
       description: form.description,
-      category: form.type === "keluar" ? form.category : null, // hanya masukkan kategori jika jenis transaksi "keluar"
-      date: new Date(),
+      category: form.type === "keluar" ? form.category : null,
+      date: new Date(`${form.date}T${form.time}`), // Menggunakan tanggal dan waktu dari form
     });
 
-    // Reset form dan error
-    setForm({ type: "masuk", amount: "", description: "", category: "makanan" });
+    setForm({ type: "masuk", amount: "", description: "", category: "makanan", date: "", time: "" });
     setError("");
   };
 
@@ -77,6 +99,28 @@ function Transactions() {
           />
         </div>
 
+        {/* Input Tanggal */}
+        <div>
+          <label className="block">Tanggal:</label>
+          <input
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+            className="p-2 border rounded w-full"
+          />
+        </div>
+
+        {/* Input Waktu */}
+        <div>
+          <label className="block">Waktu:</label>
+          <input
+            type="time"
+            value={form.time}
+            onChange={(e) => setForm({ ...form, time: e.target.value })}
+            className="p-2 border rounded w-full"
+          />
+        </div>
+
         {/* Kategori hanya muncul jika jenis transaksi adalah 'keluar' */}
         {form.type === "keluar" && (
           <div>
@@ -104,16 +148,26 @@ function Transactions() {
         </button>
       </form>
 
+      {/* Daftar Transaksi */}
       <h1 className="text-lg font-semibold mb-4 mt-8">Daftar Transaksi</h1>
       <ul className="space-y-2">
-        {transactions.map((transaction, index) => (
-          <li key={index} className="p-2 border border-gray-300 rounded">
-            <p><strong>Tanggal:</strong> {new Date(transaction.date).toLocaleString()}</p>
-            <p><strong>Jumlah:</strong> {transaction.amount}</p>
-            <p><strong>Kategori:</strong> {transaction.category}</p>
-            <p><strong>Deskripsi:</strong> {transaction.description}</p>
-          </li>
-        ))}
+        {transactions.map((transaction, index) => {
+          const transactionDate = new Date(transaction.date.seconds * 1000);
+          const hours = transactionDate.getHours();
+          const minutes = transactionDate.getMinutes();
+          const ampm = hours >= 12 ? "PM" : "AM";
+          const formattedTime = `${hours % 12}:${minutes < 10 ? "0" + minutes : minutes} ${ampm}`; // Format jam dalam 12 jam
+
+          return (
+            <li key={index} className="p-2 border border-gray-300 rounded">
+              <p><strong>Tanggal:</strong> {transactionDate.toLocaleDateString()}</p>
+              <p><strong>Jam:</strong> {formattedTime}</p> {/* Menampilkan jam dalam format 12 jam */}
+              <p><strong>Jumlah:</strong> {transaction.amount}</p>
+              <p><strong>Kategori:</strong> {transaction.category || ""}</p>
+              <p><strong>Deskripsi:</strong> {transaction.description}</p>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

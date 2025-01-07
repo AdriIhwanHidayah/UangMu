@@ -3,16 +3,15 @@ import { useTransactions } from "../TransactionContext";
 import { FaRegEye, FaRegEyeSlash } from "react-icons/fa";
 
 function Dashboard() {
-  const { transactions } = useTransactions();
-  
+  const { transactions } = useTransactions(); // Ambil data transaksi dari context
   const [isSaldoVisible, setIsSaldoVisible] = useState(true);
 
-  // Hitung total masuk
+  // Hitung total pemasukan
   const totalMasuk = transactions
     .filter((t) => t.type === "masuk")
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Hitung total keluar
+  // Hitung total pengeluaran
   const totalKeluar = transactions
     .filter((t) => t.type === "keluar")
     .reduce((acc, t) => acc + t.amount, 0);
@@ -21,17 +20,18 @@ function Dashboard() {
   const saldo = totalMasuk - totalKeluar;
 
   // Kelompokkan pengeluaran berdasarkan kategori
-  const categories = ["makanan", "transportasi", "jalan-jalan"];
-  const groupedByCategory = categories.map((category) => {
-    const totalPerCategory = transactions
-      .filter((t) => t.type === "keluar" && t.category === category)
-      .reduce((acc, t) => acc + t.amount, 0);
-    return { category, total: totalPerCategory };
-  });
+  const groupedByCategory = transactions
+    .filter((t) => t.type === "keluar")
+    .reduce((acc, t) => {
+      if (acc[t.category]) {
+        acc[t.category] += t.amount;
+      } else {
+        acc[t.category] = t.amount;
+      }
+      return acc;
+    }, {});
 
-  const toggleSaldoVisibility = () => {
-    setIsSaldoVisible(!isSaldoVisible);
-  };
+  const toggleSaldoVisibility = () => setIsSaldoVisible(!isSaldoVisible);
 
   return (
     <div className="p-4">
@@ -50,10 +50,10 @@ function Dashboard() {
       </div>
 
       {/* Notifikasi jika saldo di bawah 50 */}
-      {saldo < 50 && (
+      {saldo < 50000 && (
         <div className="mb-4 p-4 border border-red-300 rounded-md shadow-sm bg-red-100">
           <p className="text-red-700 font-bold">
-            Peringatan: Saldo Anda berada di bawah Rp 50!
+            Peringatan: Saldo Anda berada di bawah Rp 50.000!
           </p>
         </div>
       )}
@@ -64,11 +64,11 @@ function Dashboard() {
       <div className="mt-6">
         <h3 className="text-lg font-semibold">Pengeluaran Berdasarkan Kategori</h3>
         <div className="space-y-4 mt-4">
-          {groupedByCategory.map((group, index) => (
+          {Object.keys(groupedByCategory).map((category, index) => (
             <div key={index} className="p-4 border border-gray-300 rounded-md shadow-sm bg-white">
-              <h4 className="font-bold text-xl capitalize">{group.category}</h4>
+              <h4 className="font-bold text-xl capitalize">{category}</h4>
               <p className="text-lg">
-                Total Pengeluaran: Rp {group.total.toLocaleString()}
+                Total Pengeluaran: Rp {groupedByCategory[category].toLocaleString()}
               </p>
             </div>
           ))}
